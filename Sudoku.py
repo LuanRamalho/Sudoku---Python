@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import messagebox
 import random
 import time
+import json
+import os
 
 class SudokuGame:
     def __init__(self, root):
@@ -15,6 +17,10 @@ class SudokuGame:
         self.errors = 0
         self.start_time = 0
         self.game_over = False
+
+        # Caminho do arquivo de recordes
+        self.score_file = "sudoku_scores.json"
+        self.scores = self.load_scores()
 
         # Criação da tela inicial
         self.create_difficulty_screen()
@@ -30,6 +36,10 @@ class SudokuGame:
         for level in difficulties:
             tk.Button(self.difficulty_screen, text=level, font=("Arial", 14), 
                       command=lambda l=level: self.start_game(l)).pack(pady=5)
+
+        # Botão do ScoreBoard
+        tk.Button(self.difficulty_screen, text="ScoreBoard", font=("Arial", 14),
+                  command=self.show_scoreboard).pack(pady=5)
 
     def start_game(self, level):
         """Inicia o jogo com o nível selecionado"""
@@ -69,6 +79,31 @@ class SudokuGame:
                         self.cells[box_row * 3 + i][box_col * 3 + j] = entry
                         entry.bind("<FocusOut>", 
                                    lambda e, x=box_row * 3 + i, y=box_col * 3 + j: self.check_entry(x, y))
+
+    def load_scores(self):
+        """Carrega os recordes do arquivo JSON"""
+        if os.path.exists(self.score_file):
+            with open(self.score_file, "r") as file:
+                return json.load(file)
+        return {level: None for level in ["muito fácil", "fácil", "médio", "difícil", "muito difícil"]}
+
+    def save_scores(self):
+        """Salva os recordes no arquivo JSON"""
+        with open(self.score_file, "w") as file:
+            json.dump(self.scores, file, indent=4)
+
+    def show_scoreboard(self):
+        """Exibe o placar com os recordes"""
+        scoreboard_window = tk.Toplevel(self.root)
+        scoreboard_window.title("ScoreBoard")
+        
+        tk.Label(scoreboard_window, text="ScoreBoard", font=("Arial", 16)).pack(pady=10)
+        
+        for level, time in self.scores.items():
+            formatted_time = "Nenhum recorde" if time is None else self.format_time(time)
+            record = f"{level.capitalize()}: {formatted_time}"
+            tk.Label(scoreboard_window, text=record, font=("Arial", 14)).pack()
+
 
     def generate_board(self):
         """Gera um tabuleiro válido de Sudoku"""
@@ -132,7 +167,7 @@ class SudokuGame:
         self.game_over = False
         self.board, self.solution = self.generate_board()
         self.update_board()
-        self.update_timer()  # Inicia o contador de tempo assim que o jogo começar
+        self.update_timer()
 
     def update_board(self):
         """Atualiza o tabuleiro visualmente"""
@@ -182,12 +217,22 @@ class SudokuGame:
                     return False
         return True
 
+    def format_time(self, seconds):
+        """Formata o tempo em segundos para o formato hh:mm:ss"""
+        hours, remainder = divmod(seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02}:{minutes:02}:{seconds:02}"
+
+
     def update_timer(self):
-        """Atualiza o temporizador do jogo"""
+        """Atualiza o temporizador do jogo no formato hh:mm:ss"""
         if not self.game_over:
             elapsed = int(time.time() - self.start_time)
-            self.timer_label.config(text=f"Tempo: {elapsed}s")
-            self.root.after(1000, self.update_timer)  # Atualiza o timer a cada segundo
+            hours, remainder = divmod(elapsed, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            self.timer_label.config(text=f"Tempo: {hours:02}:{minutes:02}:{seconds:02}")
+            self.root.after(1000, self.update_timer)
+
 
     def give_hint(self):
         """Fornece uma dica ao jogador"""
@@ -203,15 +248,29 @@ class SudokuGame:
     def finish_game(self):
         """Verifica se o jogador completou o jogo corretamente"""
         if all(self.board[i][j] == self.solution[i][j] for i in range(9) for j in range(9)):
-            self.end_game("Parabéns, você completou o jogo!")
+            elapsed = int(time.time() - self.start_time)
+            self.update_score(elapsed)
+            self.end_game(f"Parabéns, você completou o jogo em {elapsed}s!")
         else:
             messagebox.showinfo("Jogo Incompleto", "O jogo não foi completado corretamente.")
+
+    def update_score(self, elapsed):
+        """Atualiza o placar se o jogador tiver um novo recorde"""
+        formatted_time = self.format_time(elapsed)
+        current_best = self.scores[self.difficulty]
+        if current_best is None or elapsed < current_best:
+            self.scores[self.difficulty] = elapsed  # Salvar tempo em segundos
+            self.save_scores()
+
 
     def end_game(self, message):
         """Finaliza o jogo e exibe uma mensagem"""
         self.game_over = True
-        messagebox.showinfo("Fim de Jogo", message)
+        elapsed = int(time.time() - self.start_time)
+        formatted_time = self.format_time(elapsed)
+        messagebox.showinfo("Fim de Jogo", f"{message}\nTempo: {formatted_time}")
         self.root.quit()
+
 
 if __name__ == "__main__":
     root = tk.Tk()
